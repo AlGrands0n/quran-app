@@ -1,1 +1,6 @@
-streamlit, moviepy, arabic-reshaper, python-bidi, requests
+streamlit
+moviepy==1.0.3
+arabic-reshaper
+python-bidi
+requests
+Pillow
