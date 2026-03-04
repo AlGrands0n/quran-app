@@ -1,0 +1,1 @@
+streamlit, moviepy, arabic-reshaper, python-bidi, requests
