@@ -9,6 +9,7 @@ from bidi.algorithm import get_display
 import numpy as np
 from moviepy.editor import VideoFileClip, AudioFileClip, VideoClip, CompositeVideoClip
 
+# إعدادات الصفحة
 st.set_page_config(page_title="Quran Reels Maker", layout="centered")
 
 # وظيفة تحميل الخط العربي
@@ -24,8 +25,11 @@ download_font()
 # جلب أسماء السور
 @st.cache_data
 def get_surahs():
-    res = requests.get("https://api.alquran.cloud/v1/surah").json()
-    return {item['name']: item['number'] for item in res['data']}
+    try:
+        res = requests.get("https://api.alquran.cloud/v1/surah").json()
+        return {item['name']: item['number'] for item in res['data']}
+    except:
+        return {"الفاتحة": 1}
 
 surahs_dict = get_surahs()
 
@@ -36,7 +40,7 @@ st.write("الحساب الحالي: @itsmzajy")
 selected_surah_name = st.selectbox("اختر السورة", list(surahs_dict.keys()))
 surah_num = surahs_dict[selected_surah_name]
 
-# جلب عدد آيات السورة المختارة لتحديد الخيارات
+# جلب عدد آيات السورة
 res_surah = requests.get(f"https://api.alquran.cloud/v1/surah/{surah_num}").json()
 total_ayas = res_surah['data']['numberOfAyahs']
 aya_num = st.number_input(f"رقم الآية (من 1 إلى {total_ayas})", 1, total_ayas, 1)
@@ -76,33 +80,45 @@ if st.button("صناعة الفيديو الاحترافي 🚀"):
             video_bg = VideoFileClip("temp_bg.mp4").subclip(0, audio_clip.duration).resize(height=1920)
             video_bg = video_bg.crop(x_center=video_bg.w/2, width=1080, height=1920)
 
-            # 4. وظيفة رسم النص مع معالجة الأسطر الطويلة
+            # 4. وظيفة رسم النص
             def create_overlay_frame(t):
                 img = Image.new('RGBA', (1080, 1920), (0, 0, 0, 0))
                 draw = ImageDraw.Draw(img)
                 font_aya = ImageFont.truetype("font.ttf", 70)
-                font_info = ImageFont.truetype("font.ttf", 35) # لاسم السورة واليوزر
+                font_info = ImageFont.truetype("font.ttf", 35)
 
-                # تقسيم النص إذا كان طويلاً (Wrap Text)
-                wrapped_lines = textwrap.wrap(raw_text, width=30) # كل سطر 30 حرف تقريباً
-                
-                # معالجة كل سطر للعربية
+                # تقسيم النص (Wrap)
+                wrapped_lines = textwrap.wrap(raw_text, width=30)
                 processed_lines = [get_display(arabic_reshaper.reshape(line)) for line in wrapped_lines]
                 full_display_text = "\n".join(processed_lines)
 
-                # رسم الآية في المنتصف مع خلفية خفيفة
-                w, h = draw.multiline_textsize(full_display_text, font=font_aya) if hasattr(draw, 'multiline_textsize') else draw.multiline_textbbox((0,0), full_display_text, font=font_aya)[2:]
+                # حساب الأبعاد
+                bbox = draw.multiline_textbbox((0, 0), full_display_text, font=font_aya)
+                w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
                 
+                # رسم الخلفية والنص
                 draw.rectangle([((1080-w)/2-40, (1920-h)/2-20), ((1080+w)/2+40, (1920+h)/2+20)], fill=(0,0,0,140))
                 draw.multiline_text(((1080-w)/2, (1920-h)/2), full_display_text, font=font_aya, fill="white", align="center")
 
-                # إضافة اسم السورة والآية تحت النص
+                # معلومات السورة واليوزر
                 info_text = f"سورة {selected_surah_name} | آية {aya_num}"
                 info_display = get_display(arabic_reshaper.reshape(info_text))
-                draw.text(((1080-draw.textbbox((0,0), info_display, font=font_info)[2])/2, (1920+h)/2 + 50), info_display, font=font_info, fill="yellow")
+                draw.text(((1080-draw.textbbox((0,0), info_display, font=font_info)[2])/2, (1920+h)/2 + 60), info_display, font=font_info, fill="yellow")
 
-                # إضافة اليوزر في الأسفل
                 user_display = "@itsmzajy"
                 draw.text(((1080-draw.textbbox((0,0), user_display, font=font_info)[2])/2, 1750), user_display, font=font_info, fill=(255,255,255,180))
                 
-                return
+                return np.array(img)
+
+            overlay_clip = VideoClip(create_overlay_frame, duration=audio_clip.duration).set_ismask(False)
+            
+            # 5. الدمج
+            final_video = CompositeVideoClip([video_bg, overlay_clip])
+            final_video = final_video.set_audio(audio_clip)
+            final_video.write_videofile("final_reel.mp4", fps=20, codec="libx264")
+
+            st.video("final_reel.mp4")
+            st.download_button("تحميل الريلز الجاهز ✨", open("final_reel.mp4", "rb"), "itsmzajy_quran.mp4")
+
+    except Exception as e:
+        st.error(f"حدث خطأ أثناء المعالجة: {e}")
